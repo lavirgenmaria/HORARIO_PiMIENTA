@@ -1,0 +1,436 @@
+[index.html](https://github.com/user-attachments/files/23500873/index.html)
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Horas - Decoración</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in { animation: fadeIn 0.3s ease-out; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-orange-50 via-blue-50 to-green-50 min-h-screen">
+    <div id="app" class="max-w-7xl mx-auto p-4 md:p-8">
+        <!-- Loading -->
+        <div id="loading" class="flex items-center justify-center h-screen">
+            <div class="text-center">
+                <div class="animate-spin rounded-full h-16 w-16 border-b-2 border-orange-400 mx-auto mb-4"></div>
+                <p class="text-slate-600">Cargando datos...</p>
+            </div>
+        </div>
+
+        <!-- Main App (hidden initially) -->
+        <div id="mainApp" style="display: none;">
+            <!-- Header -->
+            <div class="bg-white rounded-2xl shadow-sm p-6 mb-6 fade-in">
+                <h1 class="text-3xl font-light text-slate-800 mb-2">Gestión de Horas</h1>
+                <p class="text-slate-500">Control de tiempo dedicado a proyectos de decoración</p>
+                <button onclick="syncNow()" class="mt-3 text-sm px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors">
+                    🔄 Sincronizar ahora
+                </button>
+            </div>
+
+            <!-- Navigation -->
+            <div class="flex gap-2 mb-6 overflow-x-auto fade-in">
+                <button onclick="changeView('registro')" id="btn-registro" class="px-6 py-3 rounded-xl font-medium transition-all bg-orange-400 text-white shadow-md">
+                    ➕ Registrar Horas
+                </button>
+                <button onclick="changeView('resumen')" id="btn-resumen" class="px-6 py-3 rounded-xl font-medium transition-all bg-white text-slate-600 hover:bg-slate-50">
+                    ⏱️ Resumen
+                </button>
+                <button onclick="changeView('jornadas')" id="btn-jornadas" class="px-6 py-3 rounded-xl font-medium transition-all bg-white text-slate-600 hover:bg-slate-50">
+                    📅 Jornadas
+                </button>
+                <button onclick="changeView('historial')" id="btn-historial" class="px-6 py-3 rounded-xl font-medium transition-all bg-white text-slate-600 hover:bg-slate-50">
+                    🕐 Historial
+                </button>
+            </div>
+
+            <!-- Views -->
+            <div id="view-registro" class="view-content"></div>
+            <div id="view-resumen" class="view-content" style="display: none;"></div>
+            <div id="view-jornadas" class="view-content" style="display: none;"></div>
+            <div id="view-historial" class="view-content" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        // Configuración de JSONBin
+        const CONFIG = {
+            masterKey: '$2a$10$9ugHtT1GOPGZibmMiaLQu.GinC/jqLbN2jp0roXc8kY6LWIvlP6sW',
+            accessKey: '$2a$10$hQJkfN1iv.IqOpAsz5OXle2TBHZT8qx2DBH6JFIYCWzpFwG5T6.KW',
+            binId: '69146206d0ea881f40e3963b'
+        };
+
+        // Estado global
+        let entries = [];
+        let currentView = 'registro';
+        const personas = ['Ana', 'Mónica', 'Núria'];
+        const categorias = ['Reuniones', 'Trabajo individual', 'Compras', 'Rodaje'];
+
+        // Funciones de API JSONBin
+        async function loadFromCloud() {
+            try {
+                const response = await fetch(`https://api.jsonbin.io/v3/b/${CONFIG.binId}/latest`, {
+                    headers: {
+                        'X-Master-Key': CONFIG.masterKey
+                    }
+                });
+                const data = await response.json();
+                if (data.record && Array.isArray(data.record)) {
+                    entries = data.record.filter(e => e.horas !== undefined);
+                }
+                console.log('Datos cargados:', entries.length, 'registros');
+            } catch (error) {
+                console.error('Error cargando datos:', error);
+                entries = [];
+            }
+        }
+
+        async function saveToCloud() {
+            try {
+                const response = await fetch(`https://api.jsonbin.io/v3/b/${CONFIG.binId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Master-Key': CONFIG.masterKey,
+                        'X-Access-Key': CONFIG.accessKey
+                    },
+                    body: JSON.stringify(entries)
+                });
+                console.log('Datos guardados en la nube');
+                return true;
+            } catch (error) {
+                console.error('Error guardando datos:', error);
+                alert('Error al guardar. Por favor, intenta de nuevo.');
+                return false;
+            }
+        }
+
+        async function syncNow() {
+            const btn = event.target;
+            btn.textContent = '🔄 Sincronizando...';
+            btn.disabled = true;
+            await loadFromCloud();
+            renderCurrentView();
+            btn.textContent = '✅ Sincronizado';
+            setTimeout(() => {
+                btn.textContent = '🔄 Sincronizar ahora';
+                btn.disabled = false;
+            }, 2000);
+        }
+
+        // Inicialización
+        async function init() {
+            await loadFromCloud();
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('mainApp').style.display = 'block';
+            renderCurrentView();
+            
+            // Auto-sincronizar cada 30 segundos
+            setInterval(async () => {
+                await loadFromCloud();
+                renderCurrentView();
+            }, 30000);
+        }
+
+        // Cambiar vista
+        function changeView(view) {
+            currentView = view;
+            document.querySelectorAll('.view-content').forEach(el => el.style.display = 'none');
+            document.querySelectorAll('[id^="btn-"]').forEach(btn => {
+                btn.className = 'px-6 py-3 rounded-xl font-medium transition-all bg-white text-slate-600 hover:bg-slate-50';
+            });
+            
+            document.getElementById(`view-${view}`).style.display = 'block';
+            const activeBtn = document.getElementById(`btn-${view}`);
+            const colors = {
+                registro: 'bg-orange-400 text-white shadow-md',
+                resumen: 'bg-blue-400 text-white shadow-md',
+                jornadas: 'bg-green-400 text-white shadow-md',
+                historial: 'bg-blue-400 text-white shadow-md'
+            };
+            activeBtn.className = `px-6 py-3 rounded-xl font-medium transition-all ${colors[view]}`;
+            
+            renderCurrentView();
+        }
+
+        // Renderizar vista actual
+        function renderCurrentView() {
+            switch(currentView) {
+                case 'registro': renderRegistro(); break;
+                case 'resumen': renderResumen(); break;
+                case 'jornadas': renderJornadas(); break;
+                case 'historial': renderHistorial(); break;
+            }
+        }
+
+        // Vista Registro
+        function renderRegistro() {
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('view-registro').innerHTML = `
+                <div class="bg-white rounded-2xl shadow-sm p-8 fade-in">
+                    <h2 class="text-2xl font-light text-slate-800 mb-6">Registrar Nuevas Horas</h2>
+                    <div class="space-y-6">
+                        <div class="grid md:grid-cols-2 gap-6">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-2">Proyecto</label>
+                                <input type="text" id="proyecto" class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-orange-400 focus:ring-2 focus:ring-orange-200 outline-none transition-all" placeholder="Nombre del proyecto">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-2">Persona</label>
+                                <select id="persona" class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-orange-400 focus:ring-2 focus:ring-orange-200 outline-none transition-all">
+                                    ${personas.map(p => `<option value="${p}">${p}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-2">Categoría</label>
+                                <select id="categoria" class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 outline-none transition-all">
+                                    ${categorias.map(c => `<option value="${c}">${c}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-2">Horas Trabajadas</label>
+                                <input type="number" step="0.5" id="horas" class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-green-400 focus:ring-2 focus:ring-green-200 outline-none transition-all" placeholder="Ej: 2.5">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-2">Fecha</label>
+                                <input type="date" id="fecha" value="${today}" class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-orange-400 focus:ring-2 focus:ring-orange-200 outline-none transition-all">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-2">Notas (opcional)</label>
+                            <textarea id="notas" rows="3" class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 outline-none transition-all" placeholder="Descripción del trabajo realizado..."></textarea>
+                        </div>
+                        <button onclick="guardarRegistro()" class="w-full bg-gradient-to-r from-orange-400 to-orange-500 text-white py-4 rounded-xl font-medium hover:from-orange-500 hover:to-orange-600 transition-all shadow-md hover:shadow-lg">
+                            Guardar Registro
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function guardarRegistro() {
+            const proyecto = document.getElementById('proyecto').value;
+            const persona = document.getElementById('persona').value;
+            const categoria = document.getElementById('categoria').value;
+            const horas = parseFloat(document.getElementById('horas').value);
+            const fecha = document.getElementById('fecha').value;
+            const notas = document.getElementById('notas').value;
+
+            if (!horas || horas <= 0) {
+                alert('Por favor ingresa las horas trabajadas');
+                return;
+            }
+
+            const newEntry = {
+                id: Date.now(),
+                proyecto,
+                persona,
+                categoria,
+                horas,
+                fecha,
+                notas
+            };
+
+            entries.push(newEntry);
+            const saved = await saveToCloud();
+            
+            if (saved) {
+                document.getElementById('proyecto').value = '';
+                document.getElementById('horas').value = '';
+                document.getElementById('notas').value = '';
+                alert('✅ Registro guardado y sincronizado');
+            }
+        }
+
+        // Vista Resumen
+        function renderResumen() {
+            const calcularHoras = (persona = null, periodo = 'total') => {
+                const hoy = new Date().toISOString().split('T')[0];
+                const inicioSemana = new Date();
+                inicioSemana.setDate(inicioSemana.getDate() - inicioSemana.getDay());
+                const inicioSemanaStr = inicioSemana.toISOString().split('T')[0];
+
+                let filtradas = entries;
+                if (persona) filtradas = filtradas.filter(e => e.persona === persona);
+                if (periodo === 'diario') filtradas = filtradas.filter(e => e.fecha === hoy);
+                else if (periodo === 'semanal') filtradas = filtradas.filter(e => e.fecha >= inicioSemanaStr);
+
+                return filtradas.reduce((sum, e) => sum + e.horas, 0);
+            };
+
+            const calcularPorCategoria = (persona = null) => {
+                let filtradas = entries;
+                if (persona) filtradas = filtradas.filter(e => e.persona === persona);
+                const porCategoria = {};
+                categorias.forEach(cat => {
+                    porCategoria[cat] = filtradas.filter(e => e.categoria === cat).reduce((sum, e) => sum + e.horas, 0);
+                });
+                return porCategoria;
+            };
+
+            let html = `<div class="space-y-6 fade-in">
+                <div class="bg-white rounded-2xl shadow-sm p-8">
+                    <h2 class="text-2xl font-light text-slate-800 mb-6 flex items-center">
+                        👥 Resumen del Equipo
+                    </h2>
+                    <div class="grid md:grid-cols-3 gap-6">
+                        <div class="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-6">
+                            <div class="text-sm text-slate-600 mb-1">Hoy</div>
+                            <div class="text-3xl font-light text-slate-800">${calcularHoras(null, 'diario').toFixed(1)}h</div>
+                        </div>
+                        <div class="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6">
+                            <div class="text-sm text-slate-600 mb-1">Esta Semana</div>
+                            <div class="text-3xl font-light text-slate-800">${calcularHoras(null, 'semanal').toFixed(1)}h</div>
+                        </div>
+                        <div class="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-6">
+                            <div class="text-sm text-slate-600 mb-1">Total Acumulado</div>
+                            <div class="text-3xl font-light text-slate-800">${calcularHoras().toFixed(1)}h</div>
+                        </div>
+                    </div>
+                </div>`;
+
+            personas.forEach(persona => {
+                const porCategoria = calcularPorCategoria(persona);
+                html += `
+                    <div class="bg-white rounded-2xl shadow-sm p-8">
+                        <h3 class="text-xl font-medium text-slate-800 mb-6">${persona}</h3>
+                        <div class="grid md:grid-cols-3 gap-4 mb-6">
+                            <div class="bg-orange-50 rounded-xl p-4">
+                                <div class="text-xs text-slate-600 mb-1">Hoy</div>
+                                <div class="text-2xl font-light text-slate-800">${calcularHoras(persona, 'diario').toFixed(1)}h</div>
+                            </div>
+                            <div class="bg-blue-50 rounded-xl p-4">
+                                <div class="text-xs text-slate-600 mb-1">Esta Semana</div>
+                                <div class="text-2xl font-light text-slate-800">${calcularHoras(persona, 'semanal').toFixed(1)}h</div>
+                            </div>
+                            <div class="bg-green-50 rounded-xl p-4">
+                                <div class="text-xs text-slate-600 mb-1">Total</div>
+                                <div class="text-2xl font-light text-slate-800">${calcularHoras(persona).toFixed(1)}h</div>
+                            </div>
+                        </div>
+                        <div class="space-y-2">
+                            <div class="text-sm font-medium text-slate-600 mb-3">Por Categoría:</div>
+                            ${Object.entries(porCategoria).map(([cat, horas]) => 
+                                horas > 0 ? `<div class="flex justify-between items-center py-2 border-b border-slate-100">
+                                    <span class="text-slate-700">${cat}</span>
+                                    <span class="font-medium text-slate-800">${horas.toFixed(1)}h</span>
+                                </div>` : ''
+                            ).join('')}
+                        </div>
+                    </div>`;
+            });
+
+            html += '</div>';
+            document.getElementById('view-resumen').innerHTML = html;
+        }
+
+        // Vista Jornadas
+        function renderJornadas() {
+            let html = '<div class="space-y-6 fade-in">';
+            
+            personas.forEach(persona => {
+                const entradasPersona = entries.filter(e => e.persona === persona);
+                const fechasUnicas = [...new Set(entradasPersona.map(e => e.fecha))].sort().reverse();
+                
+                html += `<div class="bg-white rounded-2xl shadow-sm p-8">
+                    <h3 class="text-2xl font-light text-slate-800 mb-6">${persona}</h3>`;
+                
+                if (fechasUnicas.length === 0) {
+                    html += '<div class="text-center py-8 text-slate-400">No hay jornadas registradas</div>';
+                } else {
+                    html += '<div class="space-y-4">';
+                    fechasUnicas.forEach(fecha => {
+                        const entradasDia = entradasPersona.filter(e => e.fecha === fecha);
+                        const totalDia = entradasDia.reduce((sum, e) => sum + e.horas, 0);
+                        const porCategoria = {};
+                        
+                        entradasDia.forEach(e => {
+                            if (!porCategoria[e.categoria]) porCategoria[e.categoria] = 0;
+                            porCategoria[e.categoria] += e.horas;
+                        });
+
+                        html += `<div class="border border-slate-200 rounded-xl p-6">
+                            <div class="flex justify-between items-center mb-4">
+                                <h4 class="text-lg font-medium text-slate-800">${fecha}</h4>
+                                <div class="text-2xl font-light text-slate-800">Total: ${totalDia.toFixed(1)}h</div>
+                            </div>
+                            <div class="space-y-2">
+                                ${Object.entries(porCategoria).map(([cat, horas]) => `
+                                    <div class="flex justify-between items-center py-2 px-4 bg-slate-50 rounded-lg">
+                                        <span class="text-slate-700">${cat}</span>
+                                        <span class="font-medium text-slate-800">${horas.toFixed(1)}h</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>`;
+                    });
+                    html += '</div>';
+                }
+                html += '</div>';
+            });
+            
+            html += '</div>';
+            document.getElementById('view-jornadas').innerHTML = html;
+        }
+
+        // Vista Historial
+        function renderHistorial() {
+            let html = `<div class="bg-white rounded-2xl shadow-sm p-8 fade-in">
+                <h2 class="text-2xl font-light text-slate-800 mb-6">Historial de Registros</h2>`;
+            
+            if (entries.length === 0) {
+                html += `<div class="text-center py-12 text-slate-400">
+                    <div class="text-6xl mb-4">📅</div>
+                    <p>No hay registros todavía</p>
+                </div>`;
+            } else {
+                html += '<div class="space-y-3">';
+                [...entries].reverse().forEach(entry => {
+                    html += `<div class="flex items-center justify-between p-4 rounded-xl border border-slate-200 hover:border-slate-300 transition-all">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-3 mb-1 flex-wrap">
+                                <span class="font-medium text-slate-800">${entry.persona}</span>
+                                <span class="text-sm text-slate-500">•</span>
+                                <span class="text-sm text-slate-600">${entry.categoria}</span>
+                                <span class="text-sm text-slate-500">•</span>
+                                <span class="text-sm text-slate-500">${entry.fecha}</span>
+                                ${entry.proyecto ? `
+                                    <span class="text-sm text-slate-500">•</span>
+                                    <span class="text-sm font-medium text-blue-600">${entry.proyecto}</span>
+                                ` : ''}
+                            </div>
+                            ${entry.notas ? `<p class="text-sm text-slate-500">${entry.notas}</p>` : ''}
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <span class="font-medium text-lg text-slate-800">${entry.horas}h</span>
+                            <button onclick="eliminarRegistro(${entry.id})" class="text-red-400 hover:text-red-600 transition-colors p-2">
+                                🗑️
+                            </button>
+                        </div>
+                    </div>`;
+                });
+                html += '</div>';
+            }
+            html += '</div>';
+            document.getElementById('view-historial').innerHTML = html;
+        }
+
+        async function eliminarRegistro(id) {
+            if (!confirm('¿Estás segura de que quieres eliminar este registro?')) return;
+            entries = entries.filter(e => e.id !== id);
+            await saveToCloud();
+            renderCurrentView();
+        }
+
+        // Iniciar aplicación
+        init();
+    </script>
+</body>
+</html>
